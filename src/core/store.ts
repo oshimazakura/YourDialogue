@@ -1,3 +1,4 @@
+import { DEFAULT_BASE_URL } from '../shared/connection.ts';
 import { splitGreeting } from './narration.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { expandCharacterText } from './characters.ts';
@@ -5,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { Character, Message, Preferences, Segment, Session } from '../shared/types.ts';
 
 export const defaultPreferences: Preferences = {
+  baseUrl: DEFAULT_BASE_URL,
   model: '',
   characterMs: 28,
   fontSize: 21,

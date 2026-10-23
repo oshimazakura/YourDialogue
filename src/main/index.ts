@@ -1,4 +1,6 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, protocol } from 'electron';
+import { listModels } from '../core/models.ts';
+import { normalizeBaseUrl } from '../shared/connection.ts';
+import { app, BrowserWindow, clipboard, ipcMain, Menu, protocol, safeStorage } from 'electron';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -14,6 +16,10 @@ import { startDebugServer } from './debug-server.ts';
 import type { SettingsInput } from '../shared/types.ts';
 
 app.setName('YourDialogue');
+let gpuFeatures: ReturnType<typeof app.getGPUFeatureStatus> | null = null;
+app.on('gpu-info-update', () => {
+  gpuFeatures = app.getGPUFeatureStatus();
+});
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'dialogue-asset',
@@ -80,6 +86,12 @@ function debugState() {
         : 'idle_or_renderer_unavailable';
   return {
     summary,
+    rendering: {
+      gpuFeatures,
+      electron: process.versions.electron,
+      chromium: process.versions.chrome,
+      platform: process.platform,
+    },
     generation,
     currentSession: session && {
       id: session.id,
@@ -204,6 +216,15 @@ function register() {
     await service.send('', undefined, true);
   });
   handle('stop', () => service.stop());
+  handle('models', async (input) => {
+    if (!input || typeof input !== 'object' || !('baseUrl' in input))
+      throw new Error('接続先URLを確認してください。');
+    const baseUrl = normalizeBaseUrl(input.baseUrl);
+    const apiKey = 'apiKey' in input ? string(input.apiKey) : undefined;
+    const key = await settings.connectionKey(baseUrl, apiKey);
+    diagnostics?.addSecret(key);
+    return listModels(baseUrl, key);
+  });
   handle('settings', async (input) => {
     await settings.save(input as SettingsInput);
     emit();
@@ -278,7 +299,7 @@ else {
       const assets = new AssetStore(join(directory, 'assets'));
       installAssetProtocol(assets);
       characters = new Characters(store, assets);
-      settings = new Settings(store);
+      settings = new Settings(store, safeStorage);
       if (!app.isPackaged) {
         try {
           diagnostics = new Diagnostics(

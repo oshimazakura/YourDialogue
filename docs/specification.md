@@ -131,7 +131,7 @@ AI回答は必要に応じて複数の発話セグメントへ分割する。
 
 ```ts
 type Segment = {
-  type: "speech";
+  type: 'speech';
   expression: string;
   text: string;
 };
@@ -150,7 +150,10 @@ type Segment = {
 地の文は次のJSONL形式とし、表情IDは不要とする。
 
 ```jsonl
-{"type":"narration","text":"彼女は少し考えてから、頷いた。"}
+{
+  "type": "narration",
+  "text": "彼女は少し考えてから、頷いた。"
+}
 ```
 
 台詞と地の文は別ページに分ける。セグメント切替に応じて表情も変更できる。
@@ -505,7 +508,7 @@ NEW SESSIONは現在のキャラクターの最新設定で新しい会話を即
 
 ## 12. ナビゲーション
 
-`mock/` のレイアウトを基準にする。会話画面には左端のSESSION、右上のCONFIG、右側のPHONE、メッセージウィンドウに付随するLOGを配置する。
+`design/ui-prototype/` のレイアウトを基準にする。会話画面には左端のSESSION、右上のCONFIG、右側のPHONE、メッセージウィンドウに付随するLOGを配置する。
 
 - SESSIONは左ドロワーで一覧とNEW SESSIONを表示する。同じキャラでの新規開始は左端の＋、または⌘/Ctrl+Nでも行える。
 - CONFIGから専用の設定画面を開く。サイドバーで設定とキャラクター管理を切り替え、会話に戻れる。
@@ -516,27 +519,21 @@ NEW SESSIONは現在のキャラクターの最新設定で新しい会話を即
 
 ## 13. LLM接続
 
-本アプリは特定LLMへの依存を避ける方向とする。
+本アプリは特定LLMへの依存を避け、OpenAI互換のChat Completions APIを共通接続方式とする。ベースURL・APIキー・モデルIDを設定でき、認証不要のローカルサーバーではキーを省略できる。
 
-将来的には以下のような複数Providerへの対応を想定できる。
+OpenRouterは開発・テスト用の接続先で、接続先URLの初期値とする。接続先はURL入力に統一する。旧設定はベースURLが未保存でもOpenRouterとして解釈し、モデルとキーを保持する。接続先URLを変更した場合、保存済みキーは別URLへ自動送信せず、必要な場合は明示的に入力する。
 
-- OpenAI
-- Anthropic
-- Google Gemini
-- OpenAI互換API
-- OpenRouter
-- ローカルLLM / Ollama等
+ベースURLに `/chat/completions` を付加してStreaming会話を行う。`GET /models` の `data` 配列からID・表示名を取得し、モデル名・IDで検索して選択できるようにする。設定画面を開いた時に保存済み接続先の一覧を取得し、編集したURL・キーでも明示的に再取得できる。
 
-テスト段階の接続先はOpenRouterとする。まずはOpenRouter経由の通常のテキスト会話とStreamingに対応する。使用モデルは設定で指定し、JSONL出力の安定性を確認する。
+一覧APIの未対応・認証エラー・通信失敗・形式の違いは理由を表示する。再取得と手入力を可能とし、一覧取得失敗だけで会話を禁止しない。テキスト出力非対応と明示されたモデルは除外するが、一覧への掲載を会話互換性の保証とはしない。
+
+API互換性とJSONL出力の安定性は接続先・モデルごとに確認する。Responses APIやAnthropic等の独自形式の専用アダプターは今後の対応対象とする。
 
 Provider抽象化の概念例：
 
 ```ts
 interface LLMProvider {
-  chat(
-    messages: Message[],
-    options?: ChatOptions
-  ): AsyncIterable<LLMEvent>;
+  chat(messages: Message[], options?: ChatOptions): AsyncIterable<LLMEvent>;
 }
 ```
 
@@ -592,7 +589,7 @@ Streamingを前提としたAPI設計とする。
 最初の実装では以下に絞る。
 
 1. Electronデスクトップアプリ
-2. OpenRouter接続（テスト段階）
+2. OpenAI互換Chat Completions API接続、モデル一覧からの選択（主なテスト先はOpenRouter）
 3. Streaming会話
 4. VN形式のメッセージウィンドウ
 5. クリックによるページ送り

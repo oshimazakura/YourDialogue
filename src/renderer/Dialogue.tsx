@@ -97,9 +97,12 @@ export function Dialogue({
     );
     return () => window.clearInterval(timer);
   }, [pageKey, speed, letters.length]);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Pagination is measured in a layout effect. Wait for its result and sync
+    // the scene before paint so restoring a session never flashes its default face.
+    if (!page && segments.length > 0) return;
     onExpression(page?.expression ?? character.defaultExpression);
-  }, [page?.expression, character.defaultExpression, onExpression]);
+  }, [page, segments.length, character.defaultExpression, onExpression]);
   const lastReport = useRef({ at: 0, signature: '' });
   useEffect(() => {
     if (!diagnosticsEnabled) return;

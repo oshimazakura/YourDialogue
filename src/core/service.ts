@@ -1,9 +1,10 @@
+import { normalizeBaseUrl } from '../shared/connection.ts';
 import { Store } from './store.ts';
 import { JsonlDecoder } from './jsonl.ts';
 import { conversationMessages } from './prompt.ts';
-import { streamOpenRouter } from './openrouter.ts';
+import { streamChatCompletions } from './chat-completions.ts';
 import type { AppState, Character, PublicSettings } from '../shared/types.ts';
-import type { ChatRequest } from './openrouter.ts';
+import type { ChatRequest } from './chat-completions.ts';
 
 import type { Diagnostics } from './diagnostics.ts';
 
@@ -12,6 +13,7 @@ export class DialogueService {
   readonly store: Store;
   private diagnostics?: Diagnostics;
   private progress: {
+    baseUrl: string;
     sessionId: string;
     messageId: string;
     startedAt: string;
@@ -46,7 +48,7 @@ export class DialogueService {
     store: Store,
     getKey: () => Promise<string>,
     emit: () => void,
-    stream: Stream = streamOpenRouter,
+    stream: Stream = streamChatCompletions,
     diagnostics?: Diagnostics,
   ) {
     this.diagnostics = diagnostics;
@@ -94,10 +96,13 @@ export class DialogueService {
     this.assertIdle();
     if (!retry && (!text.trim() || text.length > 100_000))
       throw new Error('発言は1〜100,000文字で入力してください。');
-    const model = this.store.preferences().model.trim();
-    if (!model) throw new Error('CONFIGでOpenRouterのモデルIDを設定してください。');
+    const preferences = this.store.preferences();
+    const baseUrl = normalizeBaseUrl(preferences.baseUrl);
+    const model = preferences.model.trim();
+    if (!model) throw new Error('CONFIGでモデルを設定してください。');
     // Reserve the operation before awaiting keychain access, to prevent double sends.
     this.diagnostics?.record('generation.preparing', {
+      baseUrl,
       sessionId: this.store.currentId(),
       model,
       operation: retry ? 'retry' : editedId ? 'edit' : 'send',
@@ -112,7 +117,6 @@ export class DialogueService {
     try {
       key = await this.getKey();
       this.diagnostics?.addSecret(key);
-      if (!key) throw new Error('CONFIGでOpenRouterのAPIキーを設定してください。');
     } catch (error) {
       this.starting = false;
       this.finishStart();
@@ -135,6 +139,7 @@ export class DialogueService {
       // A short async boundary ensures active is installed before finally clears it.
       const done = Promise.resolve().then(() =>
         this.generate(session.id, assistant.id, session.character, {
+          baseUrl,
           key,
           model,
           messages,
@@ -166,6 +171,7 @@ export class DialogueService {
     request: ChatRequest,
   ) {
     this.progress = {
+      baseUrl: request.baseUrl,
       sessionId,
       messageId,
       startedAt: new Date().toISOString(),
@@ -192,6 +198,7 @@ export class DialogueService {
     let lastRawWrite = 0;
     const persistRaw = () =>
       this.diagnostics?.persistResponse({
+        baseUrl: request.baseUrl,
         sessionId,
         messageId,
         model: request.model,

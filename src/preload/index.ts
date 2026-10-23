@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AppState, DialogueApi, SettingsInput } from '../shared/types.ts';
 
 const api: DialogueApi = {
+  listModels: (input) => ipcRenderer.invoke('dialogue:models', input),
   reportCharacterDraft: (input) => ipcRenderer.invoke('dialogue:diagnostic-character', input),
   reportUi: (input) => ipcRenderer.invoke('dialogue:diagnostic-ui', input),
   getState: () => ipcRenderer.invoke('dialogue:state'),

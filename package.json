@@ -46,11 +46,27 @@
     },
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "!dist/licenses/**"
     ],
     "asar": true,
     "mac": {
       "category": "public.app-category.productivity"
-    }
-  }
+    },
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
+      },
+      {
+        "from": "dist/licenses",
+        "to": "licenses"
+      }
+    ]
+  },
+  "license": "MIT"
 }

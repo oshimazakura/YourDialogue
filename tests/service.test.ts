@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Store } from '../src/core/store.ts';
 import { DialogueService } from '../src/core/service.ts';
 import { defaultCharacter } from '../src/shared/character.ts';
-import type { ChatRequest } from '../src/core/openrouter.ts';
+import type { ChatRequest } from '../src/core/chat-completions.ts';
 
 const line = (text: string) =>
   JSON.stringify({ type: 'speech', expression: 'face_01', text }) + '\n';
@@ -183,6 +183,35 @@ test('configuration failure leaves a new session as an unsaved draft', async () 
     assert.equal(store.currentId(), draftId);
     assert.equal(store.list().length, 0);
     assert.equal(store.current().messages.length, 0);
+  } finally {
+    await service.stop();
+    store.close();
+  }
+});
+
+test('a custom keyless connection reaches generation with the saved base URL and model', async () => {
+  const store = new Store(':memory:');
+  store.setSetting(
+    'preferences',
+    JSON.stringify({ baseUrl: 'http://localhost:1234/v1/', model: 'local/model' }),
+  );
+  store.create(defaultCharacter);
+  const service = new DialogueService(
+    store,
+    async () => '',
+    () => {},
+    async function* (request) {
+      assert.equal(request.baseUrl, 'http://localhost:1234/v1');
+      assert.equal(request.key, '');
+      assert.equal(request.model, 'local/model');
+      yield line('ローカルの返答');
+    },
+  );
+  try {
+    await service.send('質問');
+    await settle(service);
+    assert.equal(store.current().messages.at(-1)?.status, 'complete');
+    assert.equal(store.list().length, 1);
   } finally {
     await service.stop();
     store.close();

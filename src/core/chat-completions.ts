@@ -1,31 +1,35 @@
+import { normalizeBaseUrl } from '../shared/connection.ts';
 import type { DiagnosticSink } from './diagnostics.ts';
 import { sseData } from './sse.ts';
 import type { conversationMessages } from './prompt.ts';
 
 export interface ChatRequest {
+  baseUrl: string;
   key: string;
   model: string;
   messages: ReturnType<typeof conversationMessages>;
   signal: AbortSignal;
   diagnose?: DiagnosticSink;
 }
-export async function* streamOpenRouter(
+export async function* streamChatCompletions(
   request: ChatRequest,
   fetcher: typeof fetch = fetch,
 ): AsyncGenerator<string> {
   request.diagnose?.('provider.request', {
+    baseUrl: request.baseUrl,
     model: request.model,
     contextMessages: request.messages.length,
   });
-  const response = await fetcher('https://openrouter.ai/api/v1/chat/completions', {
+  const baseUrl = normalizeBaseUrl(request.baseUrl);
+  const response = await fetcher(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${request.key}`,
+      ...(request.key ? { Authorization: `Bearer ${request.key}` } : {}),
       'Content-Type': 'application/json',
-      'X-Title': 'YourDialogue',
     },
     body: JSON.stringify({ model: request.model, messages: request.messages, stream: true }),
     signal: request.signal,
+    redirect: 'error',
   });
   request.diagnose?.('provider.response', {
     status: response.status,
@@ -36,12 +40,12 @@ export async function* streamOpenRouter(
     const guidance: Record<number, string> = {
       400: 'モデルまたはリクエストを確認してください。会話が長すぎる場合は新しいセッションを作成してください。',
       401: 'APIキーを確認してください。',
-      402: 'OpenRouterの残高を確認してください。',
+      402: '接続先の残高を確認してください。',
       403: 'このモデルへのアクセスが許可されていません。',
       429: '利用制限に達しました。しばらく待ってから再試行してください。',
     };
     throw new Error(
-      `OpenRouter (${response.status}): ${guidance[response.status] ?? '接続に失敗しました。時間をおいて再試行してください。'}`,
+      `LLM API (${response.status}): ${guidance[response.status] ?? '接続に失敗しました。時間をおいて再試行してください。'}`,
     );
   }
   if (!response.body) throw new Error('応答ストリームを取得できませんでした。');
@@ -58,7 +62,7 @@ export async function* streamOpenRouter(
       event = JSON.parse(data);
     } catch {
       request.diagnose?.('provider.invalid_sse_json', { characters: data.length }, 'error');
-      throw new Error('OpenRouterの応答形式を読み取れませんでした。');
+      throw new Error('LLM APIの応答形式を読み取れませんでした。');
     }
     if (event.error) {
       request.diagnose?.(
@@ -67,7 +71,7 @@ export async function* streamOpenRouter(
         'error',
       );
       throw new Error(
-        'OpenRouterの生成中にエラーが発生しました。モデルを確認するか、再試行してください。',
+        'LLM APIの生成中にエラーが発生しました。モデルを確認するか、再試行してください。',
       );
     }
     const choice = event.choices?.[0];

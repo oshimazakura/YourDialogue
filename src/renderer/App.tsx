@@ -269,7 +269,7 @@ export function App() {
   };
   const submit = async () => {
     if (sendLock.current || state?.busy || !draft.trim() || !session) return;
-    if (!state?.settings.hasApiKey || !state.settings.model) {
+    if (!state?.settings.model) {
       navigate('config');
       setCategory('ai');
       return;
@@ -308,9 +308,29 @@ export function App() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [drawer, screen, newSession]);
+  // Wait for the restored session before mounting the scene or dialogue.
+  // Rendering the fallback character here would briefly show Alice at startup.
+  if (!state) {
+    return (
+      <main className="app" aria-busy={!error}>
+        {error ? (
+          <div className="error-toast" role="alert">
+            {error}
+          </div>
+        ) : (
+          <div className="notice" role="status">
+            読み込み中…
+          </div>
+        )}
+      </main>
+    );
+  }
   return (
     <main className="app">
-      <div className="vn-layer" hidden={screen !== 'vn'}>
+      <div
+        className={`vn-layer${panel === 'backlog' ? ' backlog-open' : ''}`}
+        hidden={screen !== 'vn'}
+      >
         <CharacterScene character={character} expression={expression} />
         <header className="vn-top">
           <button onClick={() => navigate('config')} disabled={!state}>

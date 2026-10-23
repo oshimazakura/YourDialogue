@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { PublicSettings, Session } from '../shared/types.ts';
+import type { ModelOption, PublicSettings, Session } from '../shared/types.ts';
 export type ConfigCategory = 'ai' | 'display' | 'sound';
 const statusNames = { complete: '', generating: '生成中', interrupted: '中断', error: 'エラー' };
 
@@ -12,18 +12,76 @@ export function Configuration({
   settings: PublicSettings;
   save(input: Parameters<typeof window.dialogue.saveSettings>[0]): Promise<void>;
 }) {
+  const [baseUrl, setBaseUrl] = useState(settings.baseUrl);
   const [model, setModel] = useState(settings.model);
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [search, setSearch] = useState('');
+  const [manual, setManual] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+  const modelRequest = useRef(0);
   const [key, setKey] = useState('');
   const [keyChanged, setKeyChanged] = useState(false);
   const [speed, setSpeed] = useState(settings.characterMs);
   const [size, setSize] = useState(settings.fontSize);
   const [sound, setSound] = useState(settings.sound);
   const [saving, setSaving] = useState(false);
+  const invalidateModels = () => {
+    modelRequest.current++;
+    setModels([]);
+    setLoading(false);
+    setModelsError('');
+    setSearch('');
+    setManual(false);
+  };
+  const changeBaseUrl = (value: string) => {
+    invalidateModels();
+    setBaseUrl(value);
+    setModel('');
+    setKey('');
+    setKeyChanged(true);
+  };
+  const fetchModels = async () => {
+    const requestId = ++modelRequest.current;
+    setLoading(true);
+    setModelsError('');
+    try {
+      const items = await window.dialogue.listModels({
+        baseUrl,
+        ...(keyChanged ? { apiKey: key } : {}),
+      });
+      if (requestId !== modelRequest.current) return;
+      setModels(items);
+      setManual(false);
+    } catch (reason) {
+      if (requestId !== modelRequest.current) return;
+      setModels([]);
+      setManual(true);
+      setModelsError(
+        reason instanceof Error
+          ? reason.message.replace(/^Error invoking remote method '[^']+': Error: /, '')
+          : 'モデル一覧を取得できませんでした。',
+      );
+    } finally {
+      if (requestId === modelRequest.current) setLoading(false);
+    }
+  };
+  useEffect(() => {
+    void fetchModels();
+    return () => {
+      modelRequest.current++;
+    };
+    // Fetch the saved connection on opening; edited connections use the refresh button.
+  }, []);
+  const matches = models.filter((item) =>
+    `${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
+  );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     try {
       await save({
+        baseUrl,
         model,
         characterMs: speed,
         fontSize: size,
@@ -39,19 +97,36 @@ export function Configuration({
       <section hidden={category !== 'ai'}>
         <h2>AI・API設定</h2>
         <label>
-          プロバイダ
-          <select disabled value="openrouter">
-            <option value="openrouter">OpenRouter</option>
-          </select>
+          接続先URL（OpenAI互換API）
+          <input
+            type="url"
+            value={baseUrl}
+            onChange={(event) => changeBaseUrl(event.target.value)}
+            placeholder="https://example.com/v1"
+            maxLength={2048}
+          />
         </label>
+        <p className="hint">
+          /v1などまでを指定してください。会話には /chat/completions、モデル一覧には /models
+          を付加します。HTTP/HTTPSに対応します。
+        </p>
+        <p className="hint">
+          URL例：OpenRouter は https://openrouter.ai/api/v1、OpenAI は
+          https://api.openai.com/v1。利用するサービスのURLを入力してください。
+        </p>
         <label>
-          OpenRouter APIキー
+          APIキー（認証不要の接続先では空欄）
           <input
             type="password"
             autoComplete="off"
             value={key}
-            placeholder={settings.hasApiKey ? '設定済み（変更する場合のみ入力）' : 'sk-or-…'}
+            placeholder={
+              settings.hasApiKey && !keyChanged
+                ? '設定済み（変更する場合のみ入力）'
+                : '接続先のAPIキー'
+            }
             onChange={(event) => {
+              invalidateModels();
               setKey(event.target.value);
               setKeyChanged(true);
             }}
@@ -61,32 +136,109 @@ export function Configuration({
           {settings.keyStorage === 'encrypted'
             ? 'APIキーはOSの暗号化機能で保護して、このPCに保存します。'
             : 'この環境ではAPIキーはアプリ終了までメモリ内だけに保持します。'}
+          接続先URLを変更すると、以前のキーは引き継ぎません。
         </p>
-        {settings.hasApiKey && (
+        {(settings.hasApiKey || key) && (
           <button
             type="button"
             className="subtle"
             onClick={() => {
+              invalidateModels();
               setKey('');
               setKeyChanged(true);
             }}
           >
-            保存したキーを削除する
+            キーを削除する（設定保存で反映）
           </button>
         )}
-        <label>
-          モデルID
-          <input
-            value={model}
-            placeholder="provider/model-name"
-            onChange={(event) => setModel(event.target.value)}
-            maxLength={200}
-          />
-        </label>
+        <div className="model-actions">
+          <h3>モデル</h3>
+          <button
+            type="button"
+            disabled={loading || !baseUrl.trim()}
+            onClick={() => void fetchModels()}
+          >
+            {loading ? '取得中…' : 'モデル一覧を取得・更新'}
+          </button>
+        </div>
+        {loading && (
+          <p className="hint" role="status">
+            接続先からモデル一覧を取得しています…
+          </p>
+        )}
+        {modelsError && (
+          <p className="inline-error" role="alert">
+            {modelsError} 再取得するか、モデルIDを手入力できます。
+          </p>
+        )}
+        {!!models.length && !manual && (
+          <>
+            <label>
+              モデル名・IDで検索
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="モデルを検索"
+              />
+            </label>
+            <label>
+              モデルを選択
+              <select
+                className="model-list"
+                size={7}
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+              >
+                <option value="" disabled>
+                  モデルを選択してください
+                </option>
+                {model && !matches.some((item) => item.id === model) && (
+                  <option value={model}>選択中: {model}</option>
+                )}
+                {matches.map((item) => (
+                  <option value={item.id} key={item.id}>
+                    {item.name === item.id ? item.id : `${item.name} — ${item.id}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint">
+              {matches.length} / {models.length}{' '}
+              件。一覧への掲載は、このアプリでの会話対応を保証するものではありません。
+            </p>
+          </>
+        )}
+        <p className="hint">選択中: {model || '未選択'}</p>
+        <button
+          type="button"
+          className="subtle"
+          disabled={loading}
+          onClick={() => {
+            if (manual && !models.length) void fetchModels();
+            else setManual((value) => !value);
+          }}
+        >
+          {manual
+            ? models.length
+              ? 'モデル一覧から選ぶ'
+              : 'モデル一覧を再取得する'
+            : 'モデルIDを手入力する'}
+        </button>
+        {manual && (
+          <label>
+            モデルID
+            <input
+              value={model}
+              placeholder="接続先のモデルID"
+              onChange={(event) => setModel(event.target.value)}
+              maxLength={200}
+            />
+          </label>
+        )}
         <p className="hint">
-          OpenRouterに表示されるモデルIDを指定してください。送信時に会話内容をOpenRouterへ送ります。
+          一覧取得は未保存のURL・キーでも試せます。「設定を保存」で接続先とモデルを会話に反映します。送信時にはキャラクター設定と会話履歴を指定した接続先へ送り、Streamingで応答を受信します。
         </p>
-        <p className="hint">Streamingで応答を受信します。</p>
       </section>
       <section hidden={category !== 'display'}>
         <h2>表示</h2>

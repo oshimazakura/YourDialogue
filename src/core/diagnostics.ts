@@ -102,6 +102,7 @@ export class Diagnostics {
     }
   };
   persistResponse(input: {
+    baseUrl?: string;
     sessionId: string;
     messageId: string;
     model: string;

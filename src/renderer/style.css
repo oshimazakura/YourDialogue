@@ -853,6 +853,8 @@ summary {
   max-width: calc(100vw - 40px);
   max-height: calc(100dvh - 40px);
   box-shadow: 0 30px 100px #070b1866;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 .overlay-panel::backdrop {
   background: #10132599;
@@ -868,6 +870,17 @@ summary {
   width: 740px;
   height: 80dvh;
 }
+.vn-layer.backlog-open {
+  /* Dim the entire source scene as one group, rather than covering it with
+     another layer that can be lost during scroll-surface recomposition. */
+  opacity: 0.2;
+  pointer-events: none;
+}
+.panel-backlog::backdrop {
+  /* The main scene is already dimmed independently of the scrolling dialog. */
+  background: transparent;
+  backdrop-filter: none;
+}
 .panel-backlog .panel-header {
   margin: 0;
   padding: 25px 30px;
@@ -880,6 +893,8 @@ summary {
 }
 .panel-scroll {
   overflow: auto;
+  /* Keep momentum scrolling and edge gestures inside the modal. */
+  overscroll-behavior: none;
   padding: 24px 30px;
   flex: 1;
   min-height: 0;
@@ -1414,4 +1429,30 @@ summary {
   .next-arrow {
     animation: none;
   }
+}
+
+.model-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+.model-actions h3 {
+  margin: 0;
+}
+.model-actions button {
+  font-size: 12px;
+}
+.model-list {
+  padding: 6px;
+}
+.model-list option {
+  padding: 9px;
+  font-size: 12px;
+}
+.settings-form .inline-error {
+  font-size: 12px;
+  line-height: 1.8;
 }

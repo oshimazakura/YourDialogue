@@ -42,6 +42,7 @@ export interface Session {
   messages: Message[];
 }
 export interface Preferences {
+  baseUrl: string;
   model: string;
   characterMs: number;
   fontSize: number;
@@ -63,7 +64,16 @@ export interface AppState {
 export interface SettingsInput extends Preferences {
   apiKey?: string;
 }
+export interface ModelOption {
+  id: string;
+  name: string;
+}
+export interface ModelsInput {
+  baseUrl: string;
+  apiKey?: string;
+}
 export interface DialogueApi {
+  listModels(input: ModelsInput): Promise<ModelOption[]>;
   reportCharacterDraft(
     input: {
       character: Character;
