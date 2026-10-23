@@ -1,0 +1,23 @@
+# macOS metadata
+.DS_Store
+
+# Dependencies and generated output
+node_modules/
+dist/
+out/
+coverage/
+*.tsbuildinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Packaged desktop applications
+release/
+
+# Local diagnostic API credentials and logs
+.your-dialogue-debug/
